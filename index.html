@@ -162,6 +162,7 @@ footer b{color:#fff}
     <img class="logo" id="logoImg" alt="Logo IIS Gregorio Mendel">
     <div class="brand"><small>IIS Gregorio Mendel · Villa Cortese (MI) · Vicepresidenza</small><h1>Sostituzioni Docenti</h1></div>
     <div class="actions">
+      <button class="btn light" id="btnNew" title="Cancella assenti, scelte manuali e uscite del giorno">Azzera giornata</button>
       <button class="btn light" id="btnPrint">Stampa circolare</button>
     </div>
   </div>
@@ -196,8 +197,32 @@ footer b{color:#fff}
           <label class="opt"><input type="checkbox" id="oPot" checked><span>Usa le ore di potenziamento</span></label>
           <label class="opt"><input type="checkbox" id="oComp" checked><span>Se non c'è nessuno, proponi lo sgancio dalla compresenza</span></label>
           <label class="opt"><input type="checkbox" id="oAnt" checked><span>Per le classi del triennio, proponi di anticipare la lezione dell'ora successiva (classe dimessa prima)</span></label>
+          <label class="opt"><input type="checkbox" id="oPotFirst"><span>Preferisci il potenziamento all'ora a disposizione (D)</span></label>
+          <label class="opt"><input type="checkbox" id="oEq" checked><span>Tieni conto delle sostituzioni già registrate nei giorni precedenti (equità nel tempo)</span></label>
           <label class="opt"><input type="checkbox" id="oBal" checked><span>Distribuisci equamente le sostituzioni</span></label>
           <button class="btn sm light" id="btnReset" style="margin-top:6px">Annulla le scelte manuali</button>
+        </details>
+        <details id="recBox"><summary>Docenti con ore da recuperare <span class="count" id="recCount" hidden style="background:var(--g0);color:var(--g8);border-color:var(--g1)"></span></summary>
+          <div style="font-size:13px;color:var(--mut);margin-top:6px">Inserisci chi deve recuperare ore e quante. Nei menu dei sostituti questi docenti sono evidenziati (suggerimento, l'ordine di assegnazione non cambia). I dati restano solo su questo computer.</div>
+          <div class="row" style="margin-top:8px"><select id="recT" style="flex:1;min-width:0" aria-label="Docente"></select><input type="number" id="recN" min="1" max="99" value="1" style="width:64px" aria-label="Ore da recuperare"><button class="btn sm" id="recAdd">Aggiungi</button></div>
+          <div id="recList" style="margin-top:8px"></div>
+          <button class="btn sm light" id="recApply" style="margin-top:6px">Registra la giornata (recuperi e conteggi)</button>
+        </details>
+        <details id="histBox"><summary>Sostituzioni registrate (equità) <span class="count" id="histCount" hidden style="background:var(--g0);color:var(--g8);border-color:var(--g1)"></span></summary>
+          <div style="font-size:13px;color:var(--mut);margin-top:6px">Dopo aver confermato le sostituzioni del giorno, premi «Registra la giornata»: da quel momento, a parità di priorità, vengono proposti prima i docenti che ne hanno fatte meno. Salvato solo su questo computer.</div>
+          <div id="histList" style="margin-top:8px"></div>
+          <div class="row" style="margin-top:6px"><button class="btn sm" id="histApply">Registra la giornata</button><button class="btn sm light" id="histClear">Azzera i conteggi</button></div>
+        </details>
+        <details id="planBox"><summary>Assenze programmate (più giorni) <span class="count" id="planCount" hidden style="background:var(--g0);color:var(--g8);border-color:var(--g1)"></span></summary>
+          <div style="font-size:13px;color:var(--mut);margin-top:6px">Per permessi, corsi o assenze già note: il docente viene segnato assente in automatico (tutto il giorno) nelle date indicate, da lunedì a venerdì.</div>
+          <div class="row" style="margin-top:8px"><select id="planT" style="flex:1;min-width:0" aria-label="Docente"></select></div>
+          <div class="row" style="margin-top:6px;font-size:13px"><label>Dal <input type="date" id="planFrom" style="width:auto"></label><label>al <input type="date" id="planTo" style="width:auto"></label><button class="btn sm" id="planAdd">Aggiungi</button></div>
+          <div id="planList" style="margin-top:8px"></div>
+        </details>
+        <details id="extBox"><summary>Docenti di sostegno / esterni</summary>
+          <div style="font-size:13px;color:var(--mut);margin-top:6px">Il loro orario non è nei dati: i nomi inseriti qui compaiono tra i sostituti selezionabili a mano («Altro»). Verifica tu la disponibilità.</div>
+          <div class="row" style="margin-top:8px"><input type="text" id="extN" placeholder="Nome e cognome" style="flex:1;min-width:0"><button class="btn sm" id="extAdd">Aggiungi</button></div>
+          <div id="extList" style="margin-top:8px"></div>
         </details>
       </section>
     </div>
@@ -216,6 +241,7 @@ footer b{color:#fff}
           <span class="sp"></span>
           <button class="btn sm light" id="btnCopy">Copia testo</button>
         </div>
+        <div id="warnBox"></div>
         <div id="view"></div>
       </section>
     </div>
@@ -235,7 +261,7 @@ footer b{color:#fff}
       <select id="fmtSel" style="margin-bottom:10px"><option value="form">Modulo «Assenze e sostituzioni dei docenti del giorno» (come quello attuale)</option><option value="ora">Prospetto per ora (circolare)</option></select>
       <label style="font-size:13px;font-weight:600">Note da riportare (solo nel prospetto per ora, facoltative)</label>
       <textarea id="noteIn" rows="2" placeholder="Es. Le classi sono tenute a …"></textarea>
-      <div id="sheetPrev" style="margin-top:14px"></div>
+      <div id="prevWarn"></div><div id="sheetPrev" style="margin-top:14px"></div>
     </div>
   </div>
 </div>
@@ -282,10 +308,18 @@ function init(data){
 
 /* ============ STATO ============ */
 const S={date:new Date(),day:0,absent:new Map(),excl:new Set(),pcto:new Set(),usc:new Set(),fsl:{from:'',to:'',hour:1},ov:new Map(),view:'hour',
-  o:{council:true,pot:true,comp:true,bal:true,ant:true},note:''};
+  o:{council:true,pot:true,comp:true,bal:true,ant:true,potFirst:false,eq:true},note:'',rec:{},hist:{},plan:[],ext:[],planApplied:new Set()};
 const isoOf=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
 const fslActive=()=>{const i=isoOf(S.date);return !!S.fsl.from&&i>=S.fsl.from&&i<=S.fsl.to;};
 const isEx=(c,s)=>S.usc.has(c)||(S.pcto.has(c)&&fslActive()&&s>=S.fsl.hour);
+const recKey=t=>TS[t].k;
+const recLoad=()=>{try{S.rec=JSON.parse(localStorage.getItem('sost_rec')||'{}')||{};}catch(_){S.rec={};}};
+const recSave=()=>{try{localStorage.setItem('sost_rec',JSON.stringify(S.rec));}catch(_){}};
+const recLeft=t=>{const r=S.rec&&S.rec[recKey(t)];if(!r)return 0;return r.due-Object.values(r.done||{}).reduce((a,b)=>a+b,0);};
+const stLoad=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k)||'null');return v==null?d:v;}catch(_){return d;}};
+const stSave=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(_){}};
+const histN=t=>{const k=recKey(t),iso=isoOf(S.date);let n=0;for(const d in S.hist)if(d!==iso)n+=(S.hist[d][k]||0);return n;};
+const tName=r=>r.dismiss?'Dimessi alle '+SLOTS[r.s][0]:(r.t===null?'NON COPERTA':nm(r.t));
 const saveFSL=()=>{try{localStorage.setItem('sost_fsl2',JSON.stringify({c:[...S.pcto],f:S.fsl}));}catch(_){}};
 const loadFSL=()=>{try{const o=JSON.parse(localStorage.getItem('sost_fsl2')||'null');if(o){S.pcto=new Set(o.c||[]);Object.assign(S.fsl,o.f||{});}}catch(_){}};
 const absentAt=(t,s)=>{const a=S.absent.get(t);return !!a&&s>=a.from&&s<=a.to};
@@ -295,7 +329,8 @@ const nm=t=>typeof t==='string'?t.slice(2):TS[t].name;
 const CAT_LABEL={D:'Docente a Disposizione (D)',DC:'Docente del Consiglio in Disposizione (D)',P:'Docente in Potenziamento (P)',PC:'Docente del Consiglio in Potenziamento (P)',
   U:'Docente libero (classe in uscita)',UC:'Docente del Consiglio, libero (classe in uscita)',C:'Sgancio compresenza',CC:'Sgancio compresenza (docente del Consiglio)',F:'Docente con ora libera (non a disposizione)',K:'Compresenza: resta in classe il docente presente',A:'Anticipa la propria lezione',X:'Docente esterno / sostegno'};
 const CAT_CLASS={D:'t-D',DC:'t-DC',P:'t-P',PC:'t-P',U:'t-U',UC:'t-U',C:'t-C',CC:'t-C',F:'t-F',K:'t-C',A:'t-U',X:'t-F'};
-const SCORE={DC:0,PC:1,UC:2,D:3,U:4,P:5,A:-0.5,CC:6,C:7,F:99};
+const SCORE={};
+function applySc(){Object.assign(SCORE,S.o.potFirst?{PC:0,DC:1,UC:2,P:3,D:3.5,U:4,A:-0.5,CC:6,C:7,F:99}:{DC:0,PC:1,UC:2,D:3,U:4,P:5,A:-0.5,CC:6,C:7,F:99});}
 function hasGap(id,d,s){let b=false,a=false;for(let i=0;i<s;i++)if(teach[id][d][i])b=true;for(let i=s+1;i<SLOTS.length;i++)if(teach[id][d][i])a=true;return b&&a;}
 function slotPool(d,s){
   const out=[];
@@ -350,15 +385,16 @@ function compute(){
       if(n.fixed!==null) list.push({t:n.fixed,cat:'K',cls:null,score:-1});
       const best=new Map(); for(const c of list){const o=best.get(c.t); if(!o||c.score<o.score) best.set(c.t,c);}
       n.list=[...best.values()].sort((a,b)=>a.score-b.score||nm(a.t).localeCompare(nm(b.t),'it'));
-      if(S.ov.has(n.key)){n.manual=true;const v=S.ov.get(n.key);n.t=v;if(v!==null&&typeof v!=='string'){ if(taken.has(v)) n.conf=true; taken.add(v);}}
+      if(S.ov.has(n.key)){n.manual=true;const v=S.ov.get(n.key);if(v==='!D'){n.dismiss=true;n.t=null;continue;}n.t=v;if(v!==null&&typeof v!=='string'){ if(taken.has(v)) n.conf=true; taken.add(v);}}
       else if(n.fixed!==null){n.t=n.fixed;n.cat='K';n.isK=true;}
     }
     const auto=needs.filter(n=>!n.manual&&!n.isK);
     const usable=n=>n.list.filter(c=>c.cat!=='F'&&c.cat!=='K');
+    const lo=t=>(load.get(t)||0)+(S.o.eq?histN(t)*0.01:0);
     const pick=n=>{
       const fr=usable(n).filter(c=>!taken.has(c.t));
       if(!fr.length) return null;
-      fr.sort((a,b)=>a.score-b.score||(S.o.bal?(load.get(a.t)||0)-(load.get(b.t)||0):0)||nm(a.t).localeCompare(nm(b.t),'it'));
+      fr.sort((a,b)=>a.score-b.score||(S.o.bal?lo(a.t)-lo(b.t):0)||nm(a.t).localeCompare(nm(b.t),'it'));
       return fr[0];
     };
     auto.sort((a,b)=>usable(a).length-usable(b).length);
@@ -400,6 +436,7 @@ function subNote(n){
   return '';
 }
 function tagHTML(n){
+  if(n.dismiss) return '<span class="tag t-U">Classe dimessa alle '+SLOTS[n.s][0]+'</span><span class="man">scelta manuale</span>';
   if(n.t===null) return '<span class="tag t-N">Non coperta</span>';
   return '<span class="tag '+CAT_CLASS[n.cat]+'">'+esc(catText(n))+'</span>'+(n.manual?'<span class="man">scelta manuale</span>':'');
 }
@@ -429,27 +466,92 @@ function renderTeacherList(){
 function chipsHTML(set,g){return DATA.classes.map(c=>'<label class="chip'+(set.has(c)?' on':'')+'"><input type="checkbox" data-x="'+esc(c)+'" data-g="'+g+'"'+(set.has(c)?' checked':'')+'>'+esc(c)+'</label>').join('');}
 function renderChips(){$('#pctoChips').innerHTML=chipsHTML(S.pcto,'pcto');$('#uscChips').innerHTML=chipsHTML(S.usc,'usc');}
 
+function recHint(r){
+  if(typeof r.t==='number'&&recLeft(r.t)>0) return '<div class="warn" style="color:var(--g8)">⟲ Recupero ore: '+esc(nm(r.t))+' ('+recLeft(r.t)+' h residue)</div>';
+  const c=r.list.find(c=>c.t!==r.t&&typeof c.t==='number'&&c.cat!=='F'&&recLeft(c.t)>0);
+  return c?'<div class="warn" style="color:var(--amb)">⟲ '+esc(nm(c.t))+' deve recuperare '+recLeft(c.t)+' h ed è disponibile</div>':'';
+}
+function recToday(){const m={},iso=isoOf(S.date);for(const r of R.rows){if(typeof r.t==='number'&&r.cat!=='K'){const k=recKey(r.t),o=S.rec[k];if(!o)continue;const cap=recLeft(r.t)+(o.done[iso]||0);if((m[k]||0)<cap)m[k]=(m[k]||0)+1;}}return m;}
+function renderRec(){
+  const sel=$('#recT'),keep=sel.value;
+  sel.innerHTML='<option value="">— scegli docente —</option>'+TS.filter(t=>!t.ph).map(t=>'<option value="'+esc(t.k)+'">'+esc(t.name)+'</option>').join('');
+  sel.value=keep;
+  const ks=Object.keys(S.rec).filter(k=>TS.some(t=>t.k===k)),today=R?recToday():{};
+  $('#recList').innerHTML=ks.length?ks.map(k=>{const t=TS.find(x=>x.k===k),r=S.rec[k],left=r.due-Object.values(r.done||{}).reduce((a,b)=>a+b,0);
+    return '<div class="row" style="justify-content:space-between;border-top:1px solid var(--g1);padding:5px 0;font-size:13px"><span><b>'+esc(t.name)+'</b> · da recuperare <b>'+left+'</b> / '+r.due+' h'+(today[k]?' · oggi proposte: <b>'+today[k]+'</b>':'')+'</span><button class="btn sm light" data-rdel="'+esc(k)+'" aria-label="Rimuovi">Rimuovi</button></div>';}).join(''):'<div style="font-size:13px;color:var(--mut)">Nessun docente inserito.</div>';
+  const n=ks.filter(k=>{const r=S.rec[k];return r.due-Object.values(r.done||{}).reduce((a,b)=>a+b,0)>0;}).length;
+  const c=$('#recCount');c.hidden=!n;c.textContent=n+(n===1?' docente':' docenti');
+}
+function warnings(){
+  const w=[],rows=R.rows;
+  const unc=rows.filter(r=>r.t===null&&!r.dismiss);
+  if(unc.length) w.push('<b>'+unc.length+(unc.length===1?' classe senza sostituto':' classi senza sostituto')+'</b>: '+unc.map(r=>esc(r.c)+' ('+ord(r.s)+')').join(', '));
+  const dups=new Set();for(const r of rows)if(r.t!==null&&rows.filter(x=>x.s===r.s&&x.t===r.t).length>1)dups.add(nm(r.t)+' alla '+ord(r.s)+' ora');
+  if(dups.size) w.push('<b>Stesso docente su più classi nella stessa ora</b>: '+[...dups].map(esc).join(', '));
+  const cnt=new Map();for(const r of rows)if(typeof r.t==='number'&&r.cat!=='K')cnt.set(r.t,(cnt.get(r.t)||0)+1);
+  const hi=[...cnt].filter(([t,n])=>n>=4).map(([t,n])=>esc(nm(t))+' ('+n+')');
+  if(hi.length) w.push('<b>Molte sostituzioni nella stessa giornata</b>: '+hi.join(', '));
+  const ex=new Set(rows.filter(r=>typeof r.t==='string').map(r=>nm(r.t)));
+  if(ex.size) w.push('<b>Docenti esterni/sostegno</b>: verifica la disponibilità di '+[...ex].map(esc).join(', '));
+  return w;
+}
+const warnHTML=()=>{const w=R?warnings():[];return w.length?'<div style="background:#fff8e1;border:1px solid #f9a825;border-radius:8px;padding:8px 12px;margin:0 0 10px;font-size:13px;color:#4e342e"><b>Da controllare</b><ul style="margin:4px 0 0 18px;padding:0">'+w.map(x=>'<li>'+x+'</li>').join('')+'</ul></div>':'';};
+function registerDay(){
+  const m={},iso=isoOf(S.date);
+  for(const r of R.rows) if(typeof r.t==='number'&&r.cat!=='K'){const k=recKey(r.t);m[k]=(m[k]||0)+1;}
+  const rt=recToday();
+  for(const k of Object.keys(S.rec))delete S.rec[k].done[iso];
+  for(const k in rt)S.rec[k].done[iso]=rt[k];
+  if(Object.keys(m).length)S.hist[iso]=m;else delete S.hist[iso];
+  recSave();stSave('sost_hist',S.hist);render();
+  toast(Object.keys(m).length?'Giornata registrata ('+Object.values(m).reduce((a,b)=>a+b,0)+' sostituzioni)':'Nessuna sostituzione da registrare');
+}
+function applyPlan(){
+  const iso=isoOf(S.date),wd=S.date.getDay();
+  for(const id of S.planApplied){ S.absent.delete(id); } S.planApplied=new Set();
+  if(wd===0||wd===6) return;
+  for(const e of S.plan){ if(iso>=e.from&&iso<=e.to){const t=TS.find(x=>x.k===e.k);if(t&&!S.absent.has(t.id)){S.absent.set(t.id,{from:0,to:SLOTS.length-1});S.planApplied.add(t.id);}} }
+}
+function renderExtra(){
+  $('#warnBox').innerHTML=warnHTML();
+  // storico
+  const tot={},days=Object.keys(S.hist);
+  for(const d of days)for(const k in S.hist[d])tot[k]=(tot[k]||0)+S.hist[d][k];
+  const ks=Object.keys(tot).filter(k=>TS.some(t=>t.k===k)).sort((a,b)=>tot[b]-tot[a]);
+  $('#histList').innerHTML=ks.length?'<div style="font-size:12px;color:var(--mut)">'+days.length+(days.length===1?' giornata registrata':' giornate registrate')+'</div>'+ks.map(k=>'<div class="row" style="justify-content:space-between;border-top:1px solid var(--g1);padding:3px 0;font-size:13px"><span>'+esc(TS.find(t=>t.k===k).name)+'</span><b>'+tot[k]+'</b></div>').join(''):'<div style="font-size:13px;color:var(--mut)">Nessuna giornata registrata.</div>';
+  const hc=$('#histCount');hc.hidden=!days.length;hc.textContent=days.length+' gg';
+  // piano
+  const ps=$('#planT'),keep=ps.value;
+  ps.innerHTML='<option value="">— scegli docente —</option>'+TS.map(t=>'<option value="'+esc(t.k)+'">'+esc(t.name)+'</option>').join('');ps.value=keep;
+  const fd=d=>d.split('-').reverse().join('/');
+  $('#planList').innerHTML=S.plan.length?S.plan.map((e,i)=>{const t=TS.find(x=>x.k===e.k);return '<div class="row" style="justify-content:space-between;border-top:1px solid var(--g1);padding:4px 0;font-size:13px"><span><b>'+esc(t?t.name:e.k)+'</b> · '+fd(e.from)+(e.to!==e.from?' → '+fd(e.to):'')+'</span><button class="btn sm light" data-pdel="'+i+'">Rimuovi</button></div>';}).join(''):'<div style="font-size:13px;color:var(--mut)">Nessuna assenza programmata.</div>';
+  const pc=$('#planCount');pc.hidden=!S.plan.length;pc.textContent=S.plan.length;
+  // esterni
+  $('#extList').innerHTML=S.ext.length?S.ext.map((x,i)=>'<div class="row" style="justify-content:space-between;border-top:1px solid var(--g1);padding:4px 0;font-size:13px"><span>'+esc(x)+'</span><button class="btn sm light" data-edel="'+i+'">Rimuovi</button></div>').join(''):'<div style="font-size:13px;color:var(--mut)">Nessun nominativo inserito.</div>';
+}
 function optionsHTML(n){
   const groups=[['Docenti del Consiglio / a disposizione',['DC','PC','UC','D','U','P']],['Anticipo della propria lezione (classe dimessa prima)',['A']],['Compresenza (sgancio o docente già presente)',['K','CC','C']],['Docenti con ora libera tra due lezioni (non a disposizione)',['F']]];
-  let h='<option value=""'+(n.t===null?' selected':'')+'>— Nessuno (non coperta) —</option>';
+  let h='<option value=""'+(n.t===null&&!n.dismiss?' selected':'')+'>— Nessuno (non coperta) —</option><option value="!D"'+(n.dismiss?' selected':'')+'>Dimetti la classe (alle '+SLOTS[n.s][0]+')</option>';
   for(const [lab,cats] of groups){
     const items=n.list.filter(c=>cats.includes(c.cat));
     if(!items.length) continue;
     h+='<optgroup label="'+esc(lab)+'">'+items.map(c=>{
       const short={DC:'Consiglio, D',PC:'Consiglio, potenz.',UC:'Consiglio, classe in uscita',D:'D',U:'classe in uscita',P:'potenziamento',A:'anticipa, dimessa alle '+c.cls,CC:'Consiglio, compresenza cl. '+c.cls,C:'compresenza cl. '+c.cls,K:'resta in classe',F:'ora libera'}[c.cat];
-      return '<option value="'+c.t+'"'+(n.t===c.t?' selected':'')+'>'+esc(nm(c.t))+' ('+esc(short)+')</option>';
+      const rl=typeof c.t==='number'?recLeft(c.t):0;
+      return '<option value="'+c.t+'"'+(n.t===c.t?' selected':'')+'>'+(rl>0?'⟲ ':'')+esc(nm(c.t))+' ('+esc(short)+(rl>0?' · deve recuperare '+rl+' h':'')+')</option>';
     }).join('')+'</optgroup>';
   }
-  h+='<optgroup label="Altro">'+(typeof n.t==='string'?'<option value="'+esc(n.t)+'" selected>'+esc(nm(n.t))+' (esterno/sostegno)</option>':'')+'<option value="__custom">Altro docente (es. sostegno)…</option></optgroup>';
+  const exts=S.ext.map(x=>'c:'+x);if(typeof n.t==='string'&&!exts.includes(n.t))exts.push(n.t);
+  h+='<optgroup label="Altro">'+exts.map(x=>'<option value="'+esc(x)+'"'+(n.t===x?' selected':'')+'>'+esc(nm(x))+' (esterno/sostegno)</option>').join('')+'<option value="__custom">Altro docente (es. sostegno)…</option></optgroup>';
   return h;
 }
 function render(){
   R=compute();
-  const rows=R.rows, unc=rows.filter(r=>r.t===null).length, cov=rows.length-unc;
+  const rows=R.rows, unc=rows.filter(r=>r.t===null&&!r.dismiss).length, cov=rows.length-unc;
   $('#sAbs').textContent=S.absent.size; $('#sUnc').textContent=rows.length; $('#sCov').textContent=cov;
   const pct=rows.length?Math.round(cov/rows.length*100):100; $('#sPct').textContent=pct+'%';
   $('#sPctBox').className='stat '+(unc?'bad':'ok');
-  renderView(); renderTeacherList(); fslUI();
+  renderView(); renderTeacherList(); fslUI(); renderRec(); renderExtra();
 }
 function renderView(){
   const v=$('#view'),rows=R.rows;
@@ -466,7 +568,7 @@ function renderView(){
         h+='<table class="sub"><thead><tr><th>Classe</th><th>Docente assente</th><th>Sostituto assegnato</th><th>Tipologia</th></tr></thead><tbody>';
         for(const r of rs){
           const dup=rs.filter(x=>x.t!==null&&x.t===r.t).length>1;
-          h+='<tr class="'+(dup?'conf':(r.t===null?'none':''))+'"><td class="cls">'+esc(r.c)+'</td><td>'+r.ab.map(t=>esc(nm(t))).join(', ')+'<br><small style="color:var(--mut)">'+esc(r.sub)+'</small></td><td><select data-ov="'+esc(r.key)+'" aria-label="Sostituto per '+esc(r.c)+'">'+optionsHTML(r)+'</select>'+(dup?'<div class="warn" style="color:var(--red)">Docente assegnato a più classi in quest\'ora</div>':'')+'</td><td>'+tagHTML(r)+'</td></tr>';
+          h+='<tr class="'+(dup?'conf':(r.t===null&&!r.dismiss?'none':''))+'"><td class="cls">'+esc(r.c)+'</td><td>'+r.ab.map(t=>esc(nm(t))).join(', ')+'<br><small style="color:var(--mut)">'+esc(r.sub)+'</small></td><td><select data-ov="'+esc(r.key)+'" aria-label="Sostituto per '+esc(r.c)+'">'+optionsHTML(r)+'</select>'+recHint(r)+(dup?'<div class="warn" style="color:var(--red)">Docente assegnato a più classi in quest\'ora</div>':'')+'</td><td>'+tagHTML(r)+'</td></tr>';
         }
         h+='</tbody></table>';
       } else h+='<div class="ok-line">✓ Nessuna classe da coprire in quest\'ora.</div>';
@@ -484,7 +586,7 @@ function renderView(){
         else if(les){
           const r=rows.find(x=>x.s===s&&x.c===les.c);
           if(isEx(les.c,s)) h+='<div class="mini dim">'+hd+'<span class="c">'+esc(les.c)+'</span><br>classe fuori (FSL/uscita)</div>';
-          else if(r) h+='<div class="mini'+(r.t===null?' nn':'')+'">'+hd+'<span class="c">'+esc(les.c)+'</span><br>'+(r.t===null?'<b style="color:var(--red)">NON COPERTA</b>':'Sostituto: <b>'+esc(nm(r.t))+'</b>')+'</div>';
+          else if(r) h+='<div class="mini'+(r.t===null&&!r.dismiss?' nn':'')+'">'+hd+'<span class="c">'+esc(les.c)+'</span><br>'+(r.dismiss?'<b>'+esc(tName(r))+'</b>':r.t===null?'<b style="color:var(--red)">NON COPERTA</b>':'Sostituto: <b>'+esc(nm(r.t))+'</b>')+'</div>';
           else h+='<div class="mini">'+hd+'<span class="c">'+esc(les.c)+'</span><br>Compresenza: resta '+esc(les.t.filter(x=>x!==id).map(nm).join(', '))+'</div>';
         } else if(dSet[id].has(S.day+'|'+s)) h+='<div class="mini d">'+hd+'<b style="color:var(--amb)">Ora D</b><br>(Disposizione)</div>';
         else h+='<div class="mini dim">'+hd+'Libero / Non in servizio</div>';
@@ -514,7 +616,7 @@ function planText(){
   for(let s=0;s<SLOTS.length;s++){
     const rs=R.rows.filter(r=>r.s===s); if(!rs.length) continue;
     t+='\n'+ord(s)+' ora ('+SLOTS[s][0]+'–'+SLOTS[s][1]+')\n';
-    for(const r of rs) t+='- '+r.c+': '+r.ab.map(nm).join(', ')+' → '+(r.t===null?'NON COPERTA':nm(r.t))+'\n';
+    for(const r of rs) t+='- '+r.c+': '+r.ab.map(nm).join(', ')+' → '+tName(r)+'\n';
   }
   return t;
 }
@@ -534,7 +636,7 @@ function formHTML(){
     const cell=(s,f)=>{const rs=rows.filter(r=>r.s===s&&r.ab.includes(id));return rs.length?rs.map(f).join('<br>'):'';};
     for(let s=0;s<NC;s++) h+='<td>'+(s<SLOTS.length?cell(s,r=>esc(r.c)):'')+'</td>';
     h+='</tr><tr><td class="c2">Doc. sostituto</td>';
-    for(let s=0;s<NC;s++) h+='<td>'+(s<SLOTS.length?cell(s,r=>r.t===null?'<b style="color:#b3261e">NON COPERTA</b>':esc(nm(r.t))+(subNote(r)?'<br><small>'+esc(subNote(r))+'</small>':'')):'')+'</td>';
+    for(let s=0;s<NC;s++) h+='<td>'+(s<SLOTS.length?cell(s,r=>r.dismiss?'<b>Dimessi alle '+SLOTS[r.s][0]+'</b>':r.t===null?'<b style="color:#b3261e">NON COPERTA</b>':esc(nm(r.t))+(subNote(r)?'<br><small>'+esc(subNote(r))+'</small>':'')):'')+'</td>';
     h+='</tr><tr class="sg"><td class="c2">Firma</td>'+'<td></td>'.repeat(NC)+'</tr></tbody>';
   }
   h+='</table><div class="fsig">Il Dirigente Scolastico<br>'+DS_NAME+'</div></div>';
@@ -542,7 +644,7 @@ function formHTML(){
 }
 function printHTML(){return $('#fmtSel').value==='form'?formHTML():sheetHTML();}
 function sheetHTML(){
-  const rows=R.rows,unc=rows.filter(r=>r.t===null).length;
+  const rows=R.rows,unc=rows.filter(r=>r.t===null&&!r.dismiss).length;
   let h='<div class="sheet"><div class="hd"><img src="'+LOGO_SRC+'" alt="Logo"><div><div class="s1">Istituto d\'Istruzione Superiore «G. Mendel»</div><div class="s2">Via Ferrazzi 15 — 20035 Villa Cortese (MI)</div></div></div>';
   h+='<h2>Piano giornaliero sostituzione docenti assenti</h2><div class="meta"><span><b>Giorno:</b> '+DAYS[S.day]+'</span><span><b>Data:</b> '+fmtDate(S.date)+'</span><span><b>Docenti assenti:</b> '+S.absent.size+'</span><span><b>Classi coperte:</b> '+(rows.length-unc)+' / '+rows.length+'</span></div>';
   h+='<h4>1. Prospetto orario sostituzioni</h4><table><thead><tr><th>Ora</th><th>Classe</th><th>Docente assente</th><th>Docente sostituto</th><th>Tipologia copertura</th></tr></thead><tbody>';
@@ -551,7 +653,7 @@ function sheetHTML(){
     const anyAbs=[...S.absent.keys()].some(t=>absentAt(t,s)&&teach[t][S.day][s]);
     if(!rs.length){ if(anyAbs) h+='<tr><td class="o">'+ord(s)+' ora<br><small>'+SLOTS[s][0]+'–'+SLOTS[s][1]+'</small></td><td colspan="4" style="color:#666;font-style:italic">Nessuna classe scoperta</td></tr>'; continue;}
     rs.forEach((r,i)=>{
-      h+='<tr>'+(i===0?'<td class="o" rowspan="'+rs.length+'">'+ord(s)+' ora<br><small style="font-weight:400">'+SLOTS[s][0]+'–'+SLOTS[s][1]+'</small></td>':'')+'<td><b>'+esc(r.c)+'</b></td><td>'+esc(r.ab.map(nm).join(', '))+'</td>'+(r.t===null?'<td class="nc" colspan="2">NON COPERTA — da provvedere</td>':'<td><b>'+esc(nm(r.t))+'</b></td><td>'+esc(catText(r))+'</td>')+'</tr>';
+      h+='<tr>'+(i===0?'<td class="o" rowspan="'+rs.length+'">'+ord(s)+' ora<br><small style="font-weight:400">'+SLOTS[s][0]+'–'+SLOTS[s][1]+'</small></td>':'')+'<td><b>'+esc(r.c)+'</b></td><td>'+esc(r.ab.map(nm).join(', '))+'</td>'+(r.dismiss?'<td colspan="2"><b>Classe dimessa alle '+SLOTS[r.s][0]+'</b></td>':r.t===null?'<td class="nc" colspan="2">NON COPERTA — da provvedere</td>':'<td><b>'+esc(nm(r.t))+'</b></td><td>'+esc(catText(r))+'</td>')+'</tr>';
     });
   }
   h+='</tbody></table>';
@@ -573,6 +675,7 @@ function setDate(d){
   const w=$('#dateWarn');
   if(wd===0||wd===6){S.day=0;w.hidden=false;w.textContent='La data scelta è nel fine settimana: calcolo con l\'orario del lunedì.';}
   else{S.day=wd-1;w.hidden=true;}
+  applyPlan();
   $('#dateIn').value=isoDate(d);
   document.querySelectorAll('#dayPills .pill').forEach((b,i)=>b.classList.toggle('on',i===S.day));
 }
@@ -602,17 +705,27 @@ function wireUp(){
   $('#btnClear').onclick=()=>{S.absent.clear();S.ov.clear();render();};
   const chipH=e=>{const c=e.target.dataset.x;if(c===undefined)return;const set=e.target.dataset.g==='pcto'?S.pcto:S.usc;e.target.checked?set.add(c):set.delete(c);saveFSL();S.ov.clear();renderChips();render();};
   $('#pctoChips').onchange=chipH; $('#uscChips').onchange=chipH;
-  for(const [id,k] of [['oCouncil','council'],['oPot','pot'],['oComp','comp'],['oBal','bal'],['oAnt','ant']]) $('#'+id).onchange=e=>{S.o[k]=e.target.checked;S.ov.clear();render();};
+  for(const [id,k] of [['oCouncil','council'],['oPot','pot'],['oPotFirst','potFirst'],['oEq','eq'],['oComp','comp'],['oBal','bal'],['oAnt','ant']]) $('#'+id).onchange=e=>{S.o[k]=e.target.checked;applySc();S.ov.clear();render();};
+  $('#recApply').onclick=registerDay; $('#histApply').onclick=registerDay;
+  $('#histClear').onclick=()=>{if(!confirm('Azzerare tutti i conteggi delle sostituzioni registrate?'))return;S.hist={};stSave('sost_hist',S.hist);render();};
+  $('#planAdd').onclick=()=>{const k=$('#planT').value,f=$('#planFrom').value,t=$('#planTo').value||f;if(!k||!f){toast('Scegli docente e data');return;}S.plan.push({k,from:f,to:t<f?f:t});stSave('sost_plan',S.plan);applyPlan();S.ov.clear();render();};
+  $('#planList').onclick=e=>{const i=e.target.dataset.pdel;if(i===undefined)return;S.plan.splice(+i,1);stSave('sost_plan',S.plan);applyPlan();S.ov.clear();render();};
+  $('#extAdd').onclick=()=>{const x=$('#extN').value.trim();if(!x)return;if(!S.ext.includes(x))S.ext.push(x);$('#extN').value='';stSave('sost_ext',S.ext);render();};
+  $('#extList').onclick=e=>{const i=e.target.dataset.edel;if(i===undefined)return;S.ext.splice(+i,1);stSave('sost_ext',S.ext);render();};
+  $('#btnNew').onclick=()=>{if(!confirm('Azzerare la giornata? Verranno cancellati docenti assenti, scelte manuali, classi in uscita e note. La FSL e i recuperi restano.'))return;S.absent.clear();S.ov.clear();S.usc.clear();S.note='';$('#noteIn').value='';$('#search').value='';saveFSL();renderChips();render();window.scrollTo({top:0,behavior:'smooth'});toast('Giornata azzerata');};
+  $('#recAdd').onclick=()=>{const k=$('#recT').value,n=Math.max(1,Math.min(99,parseInt($('#recN').value)||0));if(!k){toast('Scegli un docente');return;}const r=S.rec[k]||(S.rec[k]={due:0,done:{}});r.due+=n;recSave();render();};
+  $('#recList').onclick=e=>{const k=e.target.dataset.rdel;if(k===undefined)return;delete S.rec[k];recSave();render();};
   $('#btnReset').onclick=()=>{S.ov.clear();render();toast('Scelte manuali annullate');};
   document.querySelector('.tabs').onclick=e=>{const b=e.target.closest('[data-view]');if(!b)return;S.view=b.dataset.view;renderView();};
   $('#view').onchange=e=>{const k=e.target.dataset.ov;if(k===undefined)return;let v=e.target.value;
     if(v==='__custom'){const x=(prompt('Nome e cognome del docente (es. sostegno):')||'').trim();if(!x){render();return;}S.ov.set(k,'c:'+x);}
+    else if(v==='!D') S.ov.set(k,'!D');
     else if(v.startsWith('c:')) S.ov.set(k,v);
     else S.ov.set(k,v===''?null:+v);
     render();};
   $('#btnCopy').onclick=()=>{if(!S.absent.size){toast('Seleziona almeno un docente assente');return;}
     const t=planText();(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('Testo copiato negli appunti')).catch(()=>{const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Testo copiato negli appunti');}catch(_){toast('Copia non riuscita');}ta.remove();});};
-  const openPrev=()=>{if(!S.absent.size){toast('Seleziona almeno un docente assente');return;}S.note=$('#noteIn').value;$('#sheetPrev').innerHTML=printHTML();$('#modal').classList.add('on');};
+  const openPrev=()=>{if(!S.absent.size){toast('Seleziona almeno un docente assente');return;}S.note=$('#noteIn').value;$('#prevWarn').innerHTML=warnHTML();$('#sheetPrev').innerHTML=printHTML();$('#modal').classList.add('on');};
   $('#btnPrint').onclick=openPrev; $('#btnClose').onclick=()=>$('#modal').classList.remove('on');
   $('#noteIn').oninput=e=>{S.note=e.target.value;$('#sheetPrev').innerHTML=printHTML();};
   $('#fmtSel').onchange=()=>{$('#sheetPrev').innerHTML=printHTML();};
@@ -627,7 +740,7 @@ function header(){
   $('#nT').textContent=TS.length; $('#nC').textContent=DATA.classes.length;
 }
 $('#logoImg').src=LOGO_SRC;
-init(DATA); loadFSL(); wireUp(); header(); renderChips(); setDate(nextSchoolDay());
+init(DATA); loadFSL(); recLoad(); S.hist=stLoad('sost_hist',{}); S.plan=stLoad('sost_plan',[]); S.ext=stLoad('sost_ext',[]); applySc(); wireUp(); header(); renderChips(); setDate(nextSchoolDay());
 if(!S.fsl.from){const m=new Date(S.date);m.setDate(m.getDate()-((m.getDay()+6)%7));const f=new Date(m);f.setDate(m.getDate()+4);S.fsl.from=isoOf(m);S.fsl.to=isoOf(f);}
 render();
 </script>
