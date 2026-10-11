@@ -223,6 +223,12 @@ footer b{color:#fff}
           <div style="font-size:13px;color:var(--mut);margin-top:6px">Inserisci chi deve recuperare ore e quante. Nei menu dei sostituti questi docenti sono evidenziati (suggerimento, l'ordine di assegnazione non cambia). I dati restano solo su questo computer.</div>
           <div class="row" style="margin-top:8px"><select id="recT" style="flex:1;min-width:0" aria-label="Docente"></select><input type="number" id="recN" min="1" max="99" value="1" style="width:64px" aria-label="Ore da recuperare"><button class="btn sm" id="recAdd">Aggiungi</button></div>
           <div id="recList" style="margin-top:8px"></div>
+          <details style="margin-top:10px"><summary>Importa un elenco (molti docenti)</summary>
+            <div style="font-size:13px;color:var(--mut);margin-top:6px">Incolla una riga per docente: cognome e ore residue da recuperare, per esempio <code>Rossi 6</code> oppure <code>Rossi M.;6</code>. Si può copiare direttamente da due colonne di Excel/Fogli. I docenti già presenti vengono aggiornati con le ore indicate.</div>
+            <textarea id="recBulk" rows="6" placeholder="Rossi 6&#10;Bianchi M. 4&#10;Verdi;10" style="margin-top:6px"></textarea>
+            <div class="row" style="margin-top:6px"><button class="btn sm" id="recImp">Importa</button><button class="btn sm light" id="recAll">Svuota l'elenco</button></div>
+            <div id="recRes" style="font-size:13px;margin-top:8px"></div>
+          </details>
           <button class="btn sm light" id="recApply" style="margin-top:6px">Registra la giornata (recuperi e conteggi)</button>
         </details>
         <details id="histBox"><summary>Sostituzioni registrate (equità) <span class="count" id="histCount" hidden style="background:var(--g0);color:var(--g8);border-color:var(--g1)"></span></summary>
@@ -510,6 +516,39 @@ function recHint(r){
   return c?'<div class="warn" style="color:var(--amb)">⟲ '+esc(nm(c.t))+' deve recuperare '+recLeft(c.t)+' h ed è disponibile</div>':'';
 }
 function recToday(){const m={},iso=isoOf(S.date);for(const r of R.rows){if(typeof r.t==='number'&&r.cat!=='K'){const k=recKey(r.t),o=S.rec[k];if(!o)continue;const cap=recLeft(r.t)+(o.done[iso]||0);if((m[k]||0)<cap)m[k]=(m[k]||0)+1;}}return m;}
+const normN=x=>String(x).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[’'`´]/g,'').replace(/[.,;]/g,' ').replace(/\s+/g,' ').trim();
+function matchTeacher(raw){
+  const toks=normN(raw).split(' ').filter(Boolean); if(!toks.length)return {r:'none'};
+  const cands=[];
+  for(const t of TS){ if(t.ph)continue;
+    const tt=normN(t.name).split(' ').filter(Boolean); let ini='';
+    if(tt.length>1&&tt[tt.length-1].length===1){ini=tt.pop();}
+    const sur=tt.join(' '), joined=toks.join(' ');
+    const hasSur=(' '+joined+' ').includes(' '+sur+' ');
+    if(!hasSur)continue;
+    const others=toks.filter(x=>!sur.split(' ').includes(x));
+    if(ini&&others.length&&!others.some(x=>x[0]===ini))continue;
+    cands.push({t,exact:!!ini&&others.some(x=>x[0]===ini)});
+  }
+  if(!cands.length)return {r:'none'};
+  const ex=cands.filter(c=>c.exact); const pick=ex.length?ex:cands;
+  const sur=pick.map(c=>c.t.name);
+  return pick.length===1?{r:'ok',t:pick[0].t}:{r:'amb',names:sur};
+}
+function importRec(txt){
+  const ok=[],amb=[],none=[],bad=[];
+  for(const line of txt.split(/\r?\n/)){
+    const l=line.trim(); if(!l)continue;
+    const m=l.match(/^(.*?)[\s;,\t]+(\d{1,2})(?:[.,]\d+)?\s*(?:h|ore)?$/i);
+    if(!m){bad.push(l);continue;}
+    const r=matchTeacher(m[1]),n=+m[2];
+    if(r.r==='ok'){S.rec[r.t.k]={due:n,done:{}};ok.push(r.t.name+' '+n);}
+    else if(r.r==='amb')amb.push(m[1].trim()+' → '+r.names.join(' / '));
+    else none.push(m[1].trim());
+  }
+  if(ok.length)recSave();
+  return {ok,amb,none,bad};
+}
 function renderRec(){
   const sel=$('#recT'),keep=sel.value;
   sel.innerHTML='<option value="">— scegli docente —</option>'+TS.filter(t=>!t.ph).map(t=>'<option value="'+esc(t.k)+'">'+esc(t.name)+'</option>').join('');
@@ -799,6 +838,16 @@ function wireUp(){
   $('#sostDel').onclick=async()=>{if(!await askConfirm("Rimuovere l'orario di sostegno caricato?"))return;S.sost=[];S.stAbs.clear();stSave('sost_sost',[]);S.ov.clear();render();};
   $('#sostTpl').onclick=()=>{const t='docente;giorno;ora;classe\nRossi Maria;Lun;1;2PA\nRossi Maria;Lun;2;2PA\nBianchi Luca;Mar;3;3B\n';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='modello_orario_sostegno.csv';a.click();};
   $('#btnNew').onclick=async()=>{if(!await askConfirm('Azzerare la giornata? Verranno cancellati docenti assenti, scelte manuali, classi in uscita e note. La FSL e i recuperi restano.'))return;S.absent.clear();S.stAbs.clear();S.planApplied=new Set();S.ov.clear();S.usc.clear();S.note='';$('#noteIn').value='';$('#search').value='';saveFSL();renderChips();render();window.scrollTo({top:0,behavior:'smooth'});toast('Giornata azzerata');};
+  $('#recImp').onclick=()=>{const t=$('#recBulk').value;if(!t.trim()){toast('Incolla prima l\'elenco');return;}
+    const r=importRec(t),L=[];
+    L.push('<b style="color:var(--g8)">Importati: '+r.ok.length+'</b>');
+    if(r.amb.length)L.push('<b style="color:var(--amb)">Ambigui ('+r.amb.length+'), aggiungi il nome o l\'iniziale:</b><br>'+r.amb.map(esc).join('<br>'));
+    if(r.none.length)L.push('<b style="color:var(--red)">Non trovati ('+r.none.length+'):</b> '+r.none.map(esc).join(', '));
+    if(r.bad.length)L.push('<b style="color:var(--red)">Righe non lette ('+r.bad.length+'):</b> '+r.bad.map(esc).join(' | '));
+    $('#recRes').innerHTML=L.join('<br>');
+    if(!r.amb.length&&!r.none.length&&!r.bad.length)$('#recBulk').value='';
+    render();};
+  $('#recAll').onclick=async()=>{if(!await askConfirm('Svuotare tutto l\'elenco dei recuperi?'))return;S.rec={};recSave();render();};
   $('#recAdd').onclick=()=>{const k=$('#recT').value,n=Math.max(1,Math.min(99,parseInt($('#recN').value)||0));if(!k){toast('Scegli un docente');return;}const r=S.rec[k]||(S.rec[k]={due:0,done:{}});r.due+=n;recSave();render();};
   $('#recList').onclick=e=>{const k=e.target.dataset.rdel;if(k===undefined)return;delete S.rec[k];recSave();render();};
   $('#btnReset').onclick=()=>{S.ov.clear();render();toast('Scelte manuali annullate');};
@@ -830,7 +879,7 @@ function buildTools(){
   const SHORT=['Classi in FSL','Uscite didattiche','Criteri','Recuperi','Equità','Assenze programmate','Sostegno','Esterni'];
   const tb=$('#toolbar'),body=$('#drawerBody');
   tb.innerHTML='<span class="tl">Strumenti</span>';
-  [...document.querySelectorAll('.stack details')].forEach((d,i)=>{
+  [...document.querySelectorAll('.stack > .card > details')].forEach((d,i)=>{
     const sm=d.querySelector('summary'),cnt=sm.querySelector('.count'),id='tool'+i;
     const title=sm.textContent.replace(cnt?cnt.textContent:'','').trim();
     const btn=document.createElement('button');btn.type='button';btn.dataset.tool=id;btn.textContent=SHORT[i]||title;btn.dataset.title=title;
@@ -853,6 +902,25 @@ function buildTools(){
       <li><b>Cambia a mano.</b> Dal menu di ogni riga scegli un altro docente, «Dimetti la classe» o «Altro docente» (es. sostegno). Le righe in rosso o con l'avviso giallo «Da controllare» vanno riviste.</li>
       <li><b>Stampa.</b> «Stampa circolare» apre l'anteprima: scegli il modulo della scuola o il prospetto per ora, poi «Stampa / Salva PDF».</li>
     </ol>
+    <h4>Ore da recuperare, passo passo</h4>
+    <p><b>Cosa fa:</b> chi ha ore da recuperare viene segnato con ⟲ e «deve recuperare N h» nei menu dei sostituti, e sotto la riga compare un avviso se uno di loro è libero. È un suggerimento: non cambia l'ordine delle proposte, la scelta resta tua.</p>
+    <p><b>Se sono pochi docenti</b></p>
+    <ol>
+      <li>Apri <b>Strumenti › Recuperi</b>.</li>
+      <li>Dal menu «— scegli docente —» seleziona il docente.</li>
+      <li>Scrivi nella casella accanto le <b>ore ancora da recuperare</b> (un numero).</li>
+      <li>Premi <b>Aggiungi</b>. Il docente compare nell'elenco con «da recuperare 6 / 6 h». Ripeti per ogni docente.</li>
+    </ol>
+    <p><b>Se sono tanti docenti</b></p>
+    <ol>
+      <li>Prepara l'elenco in Excel o Fogli con due colonne: <b>cognome</b> e <b>ore residue</b>. Se due docenti hanno lo stesso cognome, aggiungi l'iniziale (es. «Rossi M.»).</li>
+      <li>Seleziona le due colonne, copia, apri <b>Strumenti › Recuperi › Importa un elenco</b> e incolla nella casella. Va bene anche scrivere a mano una riga per docente: <i>Rossi 6</i>, <i>Bianchi M.;4</i>.</li>
+      <li>Premi <b>Importa</b>. L'app riepiloga: importati, ambigui (stesso cognome: ripeti la riga con l'iniziale) e non trovati (cognome diverso da quello dell'orario: correggilo). Le righe già importate non si perdono: correggi solo quelle segnalate e reimporta.</li>
+      <li>Controlla l'elenco: ogni docente mostra le ore da recuperare.</li>
+    </ol>
+    <p><b>Ogni giorno.</b> Quando hai confermato le sostituzioni premi <b>Registra la giornata</b> (in Recuperi o in Equità): le ore che i docenti in elenco hanno svolto oggi si scalano. Se la ripremi lo stesso giorno non conta due volte, e se cambi qualcosa vale l'ultima registrazione.</p>
+    <p><b>Correzioni.</b> «Rimuovi» cancella un docente; «Svuota l'elenco» li cancella tutti. Importare di nuovo un docente <b>sostituisce</b> le ore con il nuovo numero (considerato residuo). Aggiungere a mano un docente già presente le <b>somma</b>.</p>
+    <p><b>Condivisione.</b> L'elenco è condiviso tra i computer: se l'altro non lo vede, premi «Aggiorna dati».</p>
     <h4>Prima di calcolare</h4>
     <p><b>Classi in FSL</b> (da lunedì a venerdì, fuori dalle 9:20 alle 13:00) e <b>Uscite didattiche</b>: non richiedono sostituzione e i loro docenti risultano liberi.</p>
     <h4>Altri strumenti</h4>
